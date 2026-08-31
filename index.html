@@ -229,7 +229,7 @@
   .pv-chrome{ position:absolute; inset:0; z-index:5; display:flex; flex-direction:column; justify-content:space-between; padding:16px 18px; pointer-events:none; }
   .pv-title{ display:flex; align-items:center; gap:8px; }
   .pv-title .mark{ width:5px; height:5px; border-radius:50%; background:var(--spotlight-magenta); box-shadow:0 0 6px 1px rgba(255,63,164,0.7); }
-  .pv-title span{ font-family: var(--dynamic-font); font-weight:700; font-size: calc(9px * var(--font-scale)); letter-spacing:0.22em; color: var(--soft-pink); }
+  .pv-title span{ font-family: var(--dynamic-font); font-weight:700; font-size:9px; letter-spacing:0.22em; color: var(--soft-pink); }
   .pv-bottom{ display:flex; align-items:flex-end; justify-content:space-between; }
   .pv-counter{ font-family: var(--dynamic-font); font-size: calc(11px * var(--font-scale)); color: var(--dim); }
   .pv-dots{ display:flex; gap:5px; pointer-events:auto; }
@@ -285,7 +285,7 @@
 <div class="wrap">
 
   <header class="app-head">
-    <div class="eyebrow"><div class="mark"></div><span>Stage Memories Maker</span><span style="opacity:.45; letter-spacing:normal; font-size:11px;">build 4</span></div>
+    <div class="eyebrow"><div class="mark"></div><span>Stage Memories Maker</span><span style="opacity:.45; letter-spacing:normal; font-size:11px;">build 5</span></div>
     <h1>写真とBGMから、ステージ想い出のスライドショーを作る</h1>
     <p>写真をアップロードして音楽を選ぶだけ。プレビューを確認したら、そのままブラウザ内でHTMLまたは動画(MP4 / WebM)として書き出せます。サーバーには何もアップロードされません。</p>
   </header>
@@ -876,6 +876,24 @@ function pvRender(){
   }
 }
 
+function pausePreviewForExport(){
+  const wasPlaying = pvPlaying;
+  pvPlaying = false;
+  clearTimeout(pvTimer);
+  const fill = document.getElementById('pvProgressFill');
+  if(fill) fill.style.transition = 'none';
+  const ppIcon = document.getElementById('pvPPIcon');
+  if(ppIcon) ppIcon.setAttribute('d', 'M6 4h4v16H6zM14 4h4v16h-4z');
+
+  const wasMusicOn = pvMusicOn;
+  if(pvAudioEl && !pvAudioEl.paused) pvAudioEl.pause();
+  pvMusicOn = false;
+  const musicToggle = document.getElementById('pvMusicToggle');
+  if(musicToggle) musicToggle.classList.add('muted');
+
+  return { wasPlaying, wasMusicOn };
+}
+
 function restartPreviewTimer(){
   clearTimeout(pvTimer);
   const fill = document.getElementById('pvProgressFill');
@@ -960,7 +978,7 @@ html,body{height:100%;background:#0c0814;font-family:${fontCss};}
 .chrome{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;justify-content:space-between;padding:34px 40px;pointer-events:none;}
 .titlebar{display:flex;align-items:baseline;gap:14px;}
 .titlebar .mark{width:8px;height:8px;border-radius:50%;background:#ff3fa4;box-shadow:0 0 10px 2px rgba(255,63,164,0.7);}
-.titlebar span{font-family:${fontCss};font-weight:700;letter-spacing:0.28em;font-size:${13*fs}px;color:#ffc9e6;}
+.titlebar span{font-family:${fontCss};font-weight:700;letter-spacing:0.28em;font-size:13px;color:#ffc9e6;}
 .bottomrow{display:flex;align-items:flex-end;justify-content:space-between;}
 .counter{font-family:${fontCss};color:rgba(246,241,238,0.5);font-size:${14*fs}px;}
 .dots{display:flex;gap:8px;pointer-events:auto;}
@@ -1151,7 +1169,7 @@ function drawChrome(ctx, W, H, idx, total, progress, titleText){
   ctx.fillStyle = '#ff3fa4';
   ctx.beginPath(); ctx.arc(W*0.045+3, H*0.032, 3.5, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#ffc9e6';
-  ctx.font = '700 ' + Math.round(H*0.014 * (state.fontScale || 1)) + 'px ' + canvasFontFamily();
+  ctx.font = '700 ' + Math.round(H*0.014) + 'px ' + canvasFontFamily();
   ctx.fillText((titleText || 'Stage Memories').toUpperCase(), W*0.045+16, H*0.032+5);
 
   ctx.fillStyle = 'rgba(246,241,238,0.7)';
@@ -1374,6 +1392,10 @@ document.getElementById('exportVideoBtn').addEventListener('click', async () => 
   statusText.textContent = '準備中…';
   barFill.style.width = '0%';
 
+  // The preview redraws and plays audio on its own; leaving it running competes with
+  // the encoder and can make the export fail. Stop it for the duration of the export.
+  const previewWas = pausePreviewForExport();
+
   function offerDownload(blob, ext, label){
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1520,6 +1542,13 @@ document.getElementById('exportVideoBtn').addEventListener('click', async () => 
     }
   } finally {
     btn.disabled = false;
+    // put the preview back the way the user had it
+    if(previewWas && previewWas.wasPlaying){
+      pvPlaying = true;
+      const ppIcon = document.getElementById('pvPPIcon');
+      if(ppIcon) ppIcon.setAttribute('d', 'M6 4l15 8-15 8z');
+      restartPreviewTimer();
+    }
   }
 });
 

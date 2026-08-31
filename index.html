@@ -425,7 +425,7 @@
       <span id="exportStatusText">録画準備中…</span>
       <div class="export-bar-track"><div class="export-bar-fill" id="exportBarFill"></div></div>
     </div>
-    <div class="footnote">書き出し中はこのタブを開いたままにしてください。録画のあと、ブラウザ内でMP4(H.264+AAC)に変換するため、初回は変換エンジンの読み込みで少し時間がかかります(通信環境が必要です)。SNS投稿にそのまま使える形式で出力されます。<br><b>注意:</b> このHTMLファイルをパソコン上で直接ダブルクリックして開いている場合(アドレスバーが file:// で始まる場合)、ブラウザの制限でMP4への変換が失敗することがあります。その場合は簡易サーバー経由で開くか、Claudeのチャット内プレビューから開いて試してください(WebM形式での書き出しはfile://のままでも動作します)。</div>
+    <div class="footnote">書き出し中はこのタブを開いたままにしてください。録画のあと、ブラウザ内でMP4(H.264+AAC)に変換するため、初回は変換エンジンの読み込みで少し時間がかかります(通信環境が必要です)。SNS投稿にそのまま使える形式で出力されます。</div>
     <div id="downloadArea"></div>
   </section>
 
@@ -1178,21 +1178,28 @@ function loadScript(src){
 }
 async function getFFmpeg(onLog){
   if(ffmpegInstance) return ffmpegInstance;
-  if(!window.FFmpegWASM){
-    await loadScript('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js');
-  }
-  if(!window.FFmpegUtil){
-    await loadScript('https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js');
-  }
+
+  const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd';
+  const CORE_BASE   = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+  const UTIL_URL    = 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js';
+
+  if(!window.FFmpegWASM){ await loadScript(FFMPEG_BASE + '/ffmpeg.js'); }
+  if(!window.FFmpegUtil){ await loadScript(UTIL_URL); }
+
   const { FFmpeg } = window.FFmpegWASM;
   const { toBlobURL } = window.FFmpegUtil;
   const ffmpeg = new FFmpeg();
   if(onLog) ffmpeg.on('log', ({ message }) => onLog(message));
-  const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+
+  // A browser refuses to start a Worker from another domain's script, even over https.
+  // Passing classWorkerURL as a blob: URL makes it same-origin, so no files need to be
+  // hosted alongside this page.
   await ffmpeg.load({
-    coreURL: await toBlobURL(base + '/ffmpeg-core.js', 'text/javascript'),
-    wasmURL: await toBlobURL(base + '/ffmpeg-core.wasm', 'application/wasm'),
+    coreURL:        await toBlobURL(CORE_BASE + '/ffmpeg-core.js', 'text/javascript'),
+    wasmURL:        await toBlobURL(CORE_BASE + '/ffmpeg-core.wasm', 'application/wasm'),
+    classWorkerURL: await toBlobURL(FFMPEG_BASE + '/814.ffmpeg.js', 'text/javascript'),
   });
+
   ffmpegInstance = ffmpeg;
   return ffmpeg;
 }
@@ -1352,15 +1359,10 @@ document.getElementById('exportVideoBtn').addEventListener('click', async () => 
 
   } catch(err){
     console.error(err);
-    const isWorkerOriginError = /Worker/.test(err.message) && /origin 'null'/.test(err.message);
     if(webmBlob){
       // MP4 conversion failed after recording succeeded — offer the WebM so nothing is lost
       const url = URL.createObjectURL(webmBlob);
-      if(isWorkerOriginError){
-        statusText.innerHTML = 'MP4への変換に失敗しました。原因: このファイルを直接開いている(file://)と、ブラウザの制限でMP4変換に必要な仕組みが動きません。<br>回避方法: ①簡易サーバー経由で開く(例: このフォルダで <code>python -m http.server</code> を実行し、http://localhost:8000/ からアクセス)、②またはClaudeのチャット内プレビューからこのページを開いて試す。<br>ひとまずWebM形式で出力しておきました(投稿先によっては別途変換が必要な場合があります)。';
-      } else {
-        statusText.textContent = 'MP4への変換に失敗したため、WebM形式で出力しました(投稿先によっては別途変換が必要な場合があります): ' + err.message;
-      }
+      statusText.textContent = 'MP4への変換に失敗したため、WebM形式で出力しました(投稿先によっては別途変換が必要な場合があります): ' + err.message;
       const a = document.createElement('a');
       a.href = url;
       a.download = 'stage_memories_reel.webm';

@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STAGE MEMORIES — スライドショーメーカー</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0c0814">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" href="./icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stage Memories">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700;800&family=Zen+Maru+Gothic:wght@500;700;900&family=Kaisei+Decol:wght@500;700&family=Reggae+One&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --stage-navy: #0c0814;
+    --panel: #16101f;
+    --panel-line: rgba(246,241,238,0.12);
+    --spotlight-magenta: #ff3fa4;
+    --soft-pink: #ffc9e6;
+    --off-white: #f6f1ee;
+    --dim: rgba(246,241,238,0.5);
+    --dynamic-font: 'Shippori Mincho', serif;
+    --font-scale: 1;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{
+    background: var(--stage-navy);
+    color: var(--off-white);
+    font-family:'Zen Kaku Gothic New', sans-serif;
+    min-height:100%;
+  }
+  body{
+    padding: 40px 20px 80px;
+  }
+  .wrap{ max-width: 720px; margin: 0 auto; }
+
+  header.app-head{ margin-bottom: 40px; }
+  .eyebrow{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .eyebrow .mark{ width:7px; height:7px; border-radius:50%; background:var(--spotlight-magenta); box-shadow:0 0 8px 2px rgba(255,63,164,0.6); }
+  .eyebrow span{ font-family:'Shippori Mincho', serif; font-size:12px; letter-spacing:0.25em; color: var(--soft-pink); }
+  h1{ font-family:'Shippori Mincho', serif; font-weight:700; font-size: 30px; line-height:1.4; }
+  header.app-head p{ color: var(--dim); margin-top:10px; font-size:14px; line-height:1.7; }
+
+  section{
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 14px;
+    padding: 26px;
+    margin-bottom: 22px;
+  }
+  section h2{
+    font-size:15px; font-weight:700; margin-bottom:6px;
+    display:flex; align-items:center; gap:10px;
+  }
+  section h2 .num{
+    width:22px; height:22px; border-radius:50%;
+    background: rgba(255,63,164,0.16); color: var(--spotlight-magenta);
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:800; flex-shrink:0;
+  }
+  section .hint{ font-size:13px; color: var(--dim); margin-bottom:16px; line-height:1.6; }
+
+  .dropzone{
+    border: 1.5px dashed rgba(246,241,238,0.25);
+    border-radius: 12px;
+    padding: 26px;
+    text-align:center;
+    cursor:pointer;
+    transition: border-color .2s ease, background .2s ease;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color: var(--spotlight-magenta);
+    background: rgba(255,63,164,0.05);
+  }
+  .dropzone .dz-title{ font-size:14px; font-weight:700; margin-bottom:4px; }
+  .dropzone .dz-sub{ font-size:12px; color: var(--dim); }
+  input[type="file"]{ display:none; }
+
+  .thumbs{
+    display:flex; flex-wrap:wrap; gap:10px; margin-top:16px;
+  }
+  .thumb{
+    position:relative; width:72px; height:96px; border-radius:8px; overflow:hidden;
+    background:#000; border:1px solid var(--panel-line);
+    cursor:grab;
+    transition: transform .15s ease, opacity .15s ease;
+  }
+  .thumb.dragging{ opacity:0.35; }
+  .thumb.drag-over{ outline:2px solid var(--spotlight-magenta); outline-offset:2px; }
+  .thumb img{ width:100%; height:100%; object-fit:cover; }
+  .thumb .rm{
+    position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%;
+    background: rgba(12,8,20,0.75); color:var(--off-white);
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; cursor:pointer; border:1px solid rgba(246,241,238,0.3);
+  }
+  .thumb .idx{
+    position:absolute; bottom:3px; left:3px; font-size:10px;
+    color:var(--soft-pink); background:rgba(12,8,20,0.6);
+    padding:1px 5px; border-radius:6px;
+  }
+
+  .audio-row{
+    display:flex; align-items:center; gap:12px; margin-top:14px;
+    font-size:13px; color: var(--dim);
+  }
+  .audio-row .name{ color: var(--off-white); font-weight:600; }
+  .audio-row .clear{ margin-left:auto; cursor:pointer; color: var(--soft-pink); font-size:12px; }
+
+  .settings-row{
+    display:flex; flex-wrap:wrap; gap:24px; margin-top:6px;
+  }
+  .field{ display:flex; flex-direction:column; gap:8px; min-width:180px; }
+  .field label{ font-size:12px; color: var(--dim); }
+  .field .value{ font-size:13px; color: var(--soft-pink); font-weight:700; }
+  input[type="range"]{
+    -webkit-appearance:none; width:100%; height:3px; border-radius:2px;
+    background: rgba(246,241,238,0.18); outline:none;
+  }
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
+    background: var(--spotlight-magenta); cursor:pointer;
+    box-shadow: 0 0 6px 1px rgba(255,63,164,0.6);
+  }
+  select{
+    background: rgba(246,241,238,0.06); color: var(--off-white);
+    border: 1px solid var(--panel-line); border-radius:8px;
+    padding: 8px 10px; font-size:13px; font-family: inherit;
+  }
+  select option{
+    color: var(--stage-navy);
+    background: var(--off-white);
+  }
+  input[type="text"]{
+    background: rgba(246,241,238,0.06); color: var(--off-white);
+    border: 1px solid var(--panel-line); border-radius:8px;
+    padding: 8px 10px; font-size:13px; font-family: inherit;
+    width: 100%;
+  }
+  input[type="text"]::placeholder{ color: rgba(246,241,238,0.35); }
+
+  textarea{
+    background: rgba(246,241,238,0.06); color: var(--off-white);
+    border: 1px solid var(--panel-line); border-radius:8px;
+    padding: 8px 10px; font-size:13px; font-family: inherit;
+    width: 100%; resize: vertical;
+  }
+  textarea::placeholder{ color: rgba(246,241,238,0.35); }
+
+  .io-block{ margin-bottom:18px; }
+  .io-block:last-child{ margin-bottom:0; }
+  .io-toggle{ display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; }
+  .io-toggle input[type="checkbox"]{ width:15px; height:15px; accent-color: var(--spotlight-magenta); cursor:pointer; }
+  .io-fields{ margin-top:10px; display:flex; flex-direction:column; gap:10px; padding-left:23px; }
+  .color-row{ display:flex; gap:24px; font-size:12px; color: var(--dim); align-items:center; flex-wrap:wrap; }
+  .color-row label{ display:flex; align-items:center; gap:8px; }
+  input[type="color"]{
+    width:34px; height:26px; border:1px solid var(--panel-line); border-radius:6px;
+    background:none; cursor:pointer; padding:0;
+  }
+
+  .opt-toggle-row{ margin-top:20px; }
+  .opt-toggle{ display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; color: var(--off-white); }
+  .opt-toggle input[type="checkbox"]{
+    width:16px; height:16px; accent-color: var(--spotlight-magenta); cursor:pointer;
+  }
+  .opt-panel{
+    margin-top:18px; padding-top:18px; border-top:1px solid var(--panel-line);
+  }
+  .field-color{ min-width:100px; }
+  input[type="color"]{
+    width:56px; height:34px; border-radius:8px; border:1px solid var(--panel-line);
+    background: transparent; cursor:pointer; padding:2px;
+  }
+
+  .caption-row{
+    display:flex; align-items:center; gap:12px; margin-top:12px;
+  }
+  .caption-row .cthumb{
+    width:44px; height:58px; border-radius:6px; overflow:hidden; flex-shrink:0;
+    background:#000; border:1px solid var(--panel-line);
+  }
+  .caption-row .cthumb img{ width:100%; height:100%; object-fit:cover; }
+  .caption-row input[type="text"]{ flex:1; }
+  .caption-row input[type="color"]{ width:40px; height:34px; flex-shrink:0; }
+  .caption-empty{ font-size:12px; color:var(--dim); margin-top:10px; }
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding: 12px 22px; border-radius: 999px;
+    font-size:14px; font-weight:700; font-family: inherit;
+    cursor:pointer; border:1px solid transparent;
+    transition: transform .15s ease, opacity .15s ease;
+  }
+  .btn:active{ transform: scale(0.97); }
+  .btn:disabled{ opacity:0.4; cursor:not-allowed; }
+  .btn-primary{
+    background: linear-gradient(135deg, var(--spotlight-magenta), #b83fff);
+    color:#fff;
+  }
+  .btn-ghost{
+    background: transparent; border-color: rgba(246,241,238,0.3); color: var(--off-white);
+  }
+  .btn-row{ display:flex; flex-wrap:wrap; gap:12px; margin-top:16px; }
+
+  /* ---- preview stage ---- */
+  .stage-preview{
+    position:relative; width:100%; aspect-ratio: 9/16; max-width:340px; margin:0 auto;
+    border-radius:16px; overflow:hidden; background:#000;
+    border:1px solid var(--panel-line);
+  }
+  .stage-preview.ratio-16-9{ aspect-ratio:16/9; max-width:100%; }
+  .stage-preview.ratio-4-3{ aspect-ratio:4/3; max-width:100%; }
+  .stage-preview.ratio-1-1{ aspect-ratio:1/1; max-width:400px; }
+
+  .pv-slide{ position:absolute; inset:0; opacity:0; transition:opacity .5s ease; }
+  .pv-slide.active{ opacity:1; z-index:2; }
+  .pv-slide .bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter: blur(30px) brightness(0.5) saturate(1.1); transform:scale(1.15); }
+  .pv-slide .fg-wrap{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+  .pv-slide .fg{ max-width:100%; max-height:100%; object-fit:contain; }
+  .pv-slide.solid{ display:flex; align-items:center; justify-content:center; padding: 10% 12%; text-align:center; }
+  .pv-slide.solid .solid-text{ font-family: var(--dynamic-font); font-weight:700; font-size: clamp(calc(14px * var(--font-scale)), calc(4.2vw * var(--font-scale)), calc(26px * var(--font-scale))); line-height:1.6; white-space:pre-wrap; word-break:break-word; }
+  .pv-vignette{ position:absolute; inset:0; z-index:3; pointer-events:none; background: radial-gradient(ellipse at 50% 50%, transparent 45%, rgba(0,0,0,0.55) 100%); }
+
+  .pv-chrome{ position:absolute; inset:0; z-index:5; display:flex; flex-direction:column; justify-content:space-between; padding:16px 18px; pointer-events:none; }
+  .pv-title{ display:flex; align-items:center; gap:8px; }
+  .pv-title .mark{ width:5px; height:5px; border-radius:50%; background:var(--spotlight-magenta); box-shadow:0 0 6px 1px rgba(255,63,164,0.7); }
+  .pv-title span{ font-family: var(--dynamic-font); font-weight:700; font-size: calc(9px * var(--font-scale)); letter-spacing:0.22em; color: var(--soft-pink); }
+  .pv-bottom{ display:flex; align-items:flex-end; justify-content:space-between; }
+  .pv-counter{ font-family: var(--dynamic-font); font-size: calc(11px * var(--font-scale)); color: var(--dim); }
+  .pv-dots{ display:flex; gap:5px; pointer-events:auto; }
+  .pv-dot{ width:4px; height:4px; border-radius:50%; background:rgba(246,241,238,0.3); cursor:pointer; transition:.3s; }
+  .pv-dot.on{ background:var(--spotlight-magenta); transform:scale(1.4); }
+  .pv-progress-track{ position:absolute; bottom:0; left:0; right:0; height:2px; z-index:6; background:rgba(246,241,238,0.08); }
+  .pv-progress-fill{ height:100%; background: linear-gradient(90deg, var(--spotlight-magenta), var(--soft-pink)); width:0%; }
+
+  .pv-controls{ position:absolute; inset:0; z-index:7; display:flex; }
+  .pv-hit{ flex:1; cursor:pointer; }
+  .pv-toggle{
+    position:absolute; top:14px; right:14px; z-index:8; width:26px; height:26px; border-radius:50%;
+    border:1px solid rgba(246,241,238,0.35); background:rgba(12,8,20,0.4);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; pointer-events:auto;
+  }
+  .pv-toggle svg{ width:11px; height:11px; fill:var(--off-white); }
+  .pv-music{ right:48px; }
+  .pv-music svg{ fill:none; stroke:var(--off-white); }
+  .pv-music.muted svg{ stroke:rgba(246,241,238,0.4); }
+
+  .pv-caption{
+    position:absolute; transform:translate(-50%,-50%);
+    z-index:9; cursor:grab; user-select:none; touch-action:none;
+    font-family: var(--dynamic-font); font-weight:700;
+    text-align:center; white-space:pre-wrap; word-break:break-word;
+    padding:4px 10px; width:max-content; max-width:80%;
+    text-shadow:0 2px 10px rgba(0,0,0,0.65);
+    font-size: clamp(calc(13px * var(--font-scale)), calc(4vw * var(--font-scale)), calc(22px * var(--font-scale)));
+    pointer-events:auto;
+  }
+  .pv-caption:active{ cursor:grabbing; }
+  .pv-caption.hidden{ display:none; }
+
+  .empty-note{ text-align:center; color:var(--dim); font-size:13px; padding: 40px 10px; }
+
+  .export-status{
+    margin-top:16px; font-size:13px; color: var(--soft-pink); display:none;
+  }
+  .export-status.show{ display:block; }
+  .export-bar-track{ height:4px; border-radius:2px; background:rgba(246,241,238,0.12); margin-top:8px; overflow:hidden; }
+  .export-bar-fill{ height:100%; width:0%; background: linear-gradient(90deg, var(--spotlight-magenta), var(--soft-pink)); }
+
+  .download-link{
+    display:inline-block; margin-top:14px; padding:10px 18px; border-radius:999px;
+    background: rgba(255,63,164,0.14); color: var(--soft-pink); text-decoration:none;
+    font-size:13px; font-weight:700; border:1px solid rgba(255,63,164,0.4);
+  }
+
+  .footnote{ font-size:12px; color:var(--dim); margin-top:10px; line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="app-head">
+    <div class="eyebrow"><div class="mark"></div><span>Stage Memories Maker</span></div>
+    <h1>写真とBGMから、ステージ想い出のスライドショーを作る</h1>
+    <p>写真をアップロードして音楽を選ぶだけ。プレビューを確認したら、そのままブラウザ内でHTMLまたは動画(MP4 / WebM)として書き出せます。サーバーには何もアップロードされません。</p>
+  </header>
+
+  <section>
+    <h2><span class="num">1</span>写真をアップロード</h2>
+    <div class="hint">複数選択できます。サムネイルはドラッグして並び替えられます。</div>
+    <div class="dropzone" id="photoDrop">
+      <div class="dz-title">クリックまたはドラッグ&ドロップ</div>
+      <div class="dz-sub">JPG / PNG / WebP</div>
+      <input type="file" id="photoInput" accept="image/*" multiple>
+    </div>
+    <div class="thumbs" id="thumbs"></div>
+  </section>
+
+  <section>
+    <h2><span class="num">2</span>BGMをアップロード</h2>
+    <div class="hint">曲が写真の合計時間より短い場合はループ、長い場合は自動でフェードアウトします。</div>
+    <div class="dropzone" id="audioDrop">
+      <div class="dz-title">クリックまたはドラッグ&ドロップ</div>
+      <div class="dz-sub">MP3 / WAV / M4A</div>
+      <input type="file" id="audioInput" accept="audio/*">
+    </div>
+    <div class="audio-row" id="audioRow" style="display:none;">
+      <span>♪</span><span class="name" id="audioName"></span>
+      <span class="clear" id="audioClear">削除</span>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">3</span>設定</h2>
+    <div class="settings-row">
+      <div class="field">
+        <label>タイトル文字</label>
+        <input type="text" id="titleInput" value="Stage Memories" maxlength="30" placeholder="Stage Memories">
+      </div>
+      <div class="field">
+        <label>1枚あたりの表示秒数</label>
+        <input type="range" id="durRange" min="2" max="8" step="0.5" value="4.5">
+        <div class="value" id="durValue">4.5秒</div>
+      </div>
+      <div class="field">
+        <label>画面比率</label>
+        <select id="ratioSelect">
+          <option value="9-16" selected>縦型 9:16(スマホ・リール向け)</option>
+          <option value="16-9">横型 16:9</option>
+          <option value="4-3">横型 4:3</option>
+          <option value="1-1">正方形 1:1</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>フォント</label>
+        <select id="fontSelect"></select>
+      </div>
+      <div class="field">
+        <label>文字サイズ</label>
+        <input type="range" id="fontSizeRange" min="0.6" max="1.8" step="0.1" value="1">
+        <div class="value" id="fontSizeValue">100%</div>
+      </div>
+    </div>
+
+    <div class="opt-toggle-row">
+      <label class="opt-toggle">
+        <input type="checkbox" id="introOutroToggle">
+        <span>最初と最後に単色の画面を入れる</span>
+      </label>
+    </div>
+
+    <div class="opt-panel" id="introOutroPanel" style="display:none;">
+      <div class="settings-row">
+        <div class="field">
+          <label>最初の画面の文字</label>
+          <input type="text" id="introTextInput" maxlength="60" placeholder="例: 2026 Summer Live">
+        </div>
+        <div class="field">
+          <label>最後の画面の文字</label>
+          <input type="text" id="outroTextInput" maxlength="60" placeholder="例: Thank you!">
+        </div>
+      </div>
+      <div class="settings-row">
+        <div class="field field-color">
+          <label>背景色</label>
+          <input type="color" id="introBgColor" value="#0c0814">
+        </div>
+        <div class="field field-color">
+          <label>文字色</label>
+          <input type="color" id="introTextColor" value="#f6f1ee">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">4</span>文字を入れる</h2>
+    <div class="hint">写真の上に文字を重ねられます。全体に共通で出す文字と、写真ごとの個別の文字を両方使えます。位置はプレビューでドラッグして自由に動かせます。</div>
+
+    <div class="opt-toggle-row">
+      <label class="opt-toggle">
+        <input type="checkbox" id="globalCaptionToggle">
+        <span>全体に共通の文字を入れる</span>
+      </label>
+    </div>
+    <div class="opt-panel" id="globalCaptionPanel" style="display:none;">
+      <div class="settings-row">
+        <div class="field" style="flex:1; min-width:220px;">
+          <label>文字</label>
+          <input type="text" id="globalCaptionText" maxlength="60" placeholder="例: 2026 Summer Live">
+        </div>
+        <div class="field field-color">
+          <label>文字色</label>
+          <input type="color" id="globalCaptionColor" value="#ffffff">
+        </div>
+      </div>
+    </div>
+
+    <div class="opt-toggle-row" style="margin-top:24px;">
+      <span style="font-size:13px; font-weight:700;">写真ごとの個別の文字</span>
+    </div>
+    <div id="perPhotoCaptionList"></div>
+  </section>
+
+  <section>
+    <h2><span class="num">5</span>プレビュー</h2>
+    <div id="previewWrap">
+      <div class="empty-note">写真をアップロードするとここにプレビューが表示されます</div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">6</span>書き出し</h2>
+    <div class="hint">HTMLはこのページと同じ見た目のスライドショーをそのまま保存します。動画はブラウザ内で実際に再生しながら録画するため、写真の合計時間だけ時間がかかります。</div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="exportHtmlBtn" disabled>HTMLで保存</button>
+      <button class="btn btn-primary" id="exportVideoBtn" disabled>動画として書き出す</button>
+    </div>
+    <div class="export-status" id="exportStatus">
+      <span id="exportStatusText">録画準備中…</span>
+      <div class="export-bar-track"><div class="export-bar-fill" id="exportBarFill"></div></div>
+    </div>
+    <div class="footnote">書き出し中はこのタブを開いたままにしてください。録画のあと、ブラウザ内でMP4(H.264+AAC)に変換するため、初回は変換エンジンの読み込みで少し時間がかかります(通信環境が必要です)。SNS投稿にそのまま使える形式で出力されます。<br><b>注意:</b> このHTMLファイルをパソコン上で直接ダブルクリックして開いている場合(アドレスバーが file:// で始まる場合)、ブラウザの制限でMP4への変換が失敗することがあります。その場合は簡易サーバー経由で開くか、Claudeのチャット内プレビューから開いて試してください(WebM形式での書き出しはfile://のままでも動作します)。</div>
+    <div id="downloadArea"></div>
+  </section>
+
+</div>
+
+<script>
+const state = {
+  photos: [], // {file, url, caption:{text,color,x,y}}
+  audio: null, // {file, url}
+  duration: 4.5,
+  ratio: '9-16',
+  title: 'Stage Memories',
+  introOutro: {
+    enabled: false,
+    introText: '',
+    outroText: '',
+    bgColor: '#0c0814',
+    textColor: '#f6f1ee'
+  },
+  globalCaption: {
+    enabled: false,
+    text: '',
+    color: '#ffffff',
+    x: 0.5,
+    y: 0.86
+  },
+  font: null,
+  fontScale: 1
+};
+
+function newCaption(){
+  return { text: '', color: '#ffffff', x: 0.5, y: 0.68 };
+}
+
+/* ---------------- font selection ---------------- */
+const FONT_OPTIONS = [
+  { id:'shippori', label:'Shippori Mincho(上品な明朝)', family:'Shippori Mincho', fallback:'serif', weight:700, googleQuery:'Shippori+Mincho:wght@500;700' },
+  { id:'zenkaku', label:'Zen Kaku Gothic New(すっきりゴシック)', family:'Zen Kaku Gothic New', fallback:'sans-serif', weight:700, googleQuery:'Zen+Kaku+Gothic+New:wght@400;700;800' },
+  { id:'zenmaru', label:'Zen Maru Gothic(まる文字)', family:'Zen Maru Gothic', fallback:'sans-serif', weight:700, googleQuery:'Zen+Maru+Gothic:wght@500;700;900' },
+  { id:'kaisei', label:'Kaisei Decol(華やかな明朝)', family:'Kaisei Decol', fallback:'serif', weight:700, googleQuery:'Kaisei+Decol:wght@500;700' },
+  { id:'reggae', label:'Reggae One(ポップで目立つ)', family:'Reggae One', fallback:'sans-serif', weight:400, googleQuery:'Reggae+One' },
+  { id:'yuji', label:'Yuji Syuku(筆文字風)', family:'Yuji Syuku', fallback:'serif', weight:400, googleQuery:'Yuji+Syuku' }
+];
+
+function applyDynamicFont(fontOpt){
+  document.documentElement.style.setProperty('--dynamic-font', `'${fontOpt.family}', ${fontOpt.fallback}`);
+}
+
+state.font = FONT_OPTIONS[0];
+applyDynamicFont(state.font);
+
+const fontSelect = document.getElementById('fontSelect');
+FONT_OPTIONS.forEach(opt => {
+  const o = document.createElement('option');
+  o.value = opt.id;
+  o.textContent = opt.label;
+  fontSelect.appendChild(o);
+});
+fontSelect.value = state.font.id;
+fontSelect.addEventListener('change', () => {
+  const chosen = FONT_OPTIONS.find(f => f.id === fontSelect.value);
+  if(!chosen) return;
+  state.font = chosen;
+  applyDynamicFont(chosen);
+});
+
+const fontSizeRange = document.getElementById('fontSizeRange');
+const fontSizeValue = document.getElementById('fontSizeValue');
+fontSizeRange.addEventListener('input', () => {
+  state.fontScale = parseFloat(fontSizeRange.value);
+  fontSizeValue.textContent = Math.round(state.fontScale * 100) + '%';
+  document.documentElement.style.setProperty('--font-scale', state.fontScale);
+});
+
+/* ---------------- upload handling ---------------- */
+const photoInput = document.getElementById('photoInput');
+const photoDrop = document.getElementById('photoDrop');
+const thumbsEl = document.getElementById('thumbs');
+
+function addPhotos(fileList){
+  Array.from(fileList).forEach(file => {
+    if(!file.type.startsWith('image/')) return;
+    state.photos.push({ file, url: URL.createObjectURL(file), caption: newCaption() });
+  });
+  renderThumbs();
+  renderPreview();
+  updateExportButtons();
+}
+
+function renderThumbs(){
+  thumbsEl.innerHTML = '';
+  state.photos.forEach((p, i) => {
+    const d = document.createElement('div');
+    d.className = 'thumb';
+    d.draggable = true;
+    d.dataset.i = i;
+    d.innerHTML = `<img src="${p.url}"><div class="idx">${i+1}</div><div class="rm" data-i="${i}">×</div>`;
+    thumbsEl.appendChild(d);
+  });
+  thumbsEl.querySelectorAll('.rm').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const i = parseInt(e.currentTarget.dataset.i, 10);
+      state.photos.splice(i, 1);
+      renderThumbs();
+      renderPreview();
+      updateExportButtons();
+    });
+  });
+  wireThumbDrag();
+  renderPerPhotoCaptionList();
+}
+
+const perPhotoCaptionList = document.getElementById('perPhotoCaptionList');
+
+function renderPerPhotoCaptionList(){
+  if(state.photos.length === 0){
+    perPhotoCaptionList.innerHTML = '<div class="caption-empty">写真をアップロードすると、ここに1枚ずつ文字を入れられます</div>';
+    return;
+  }
+  perPhotoCaptionList.innerHTML = '';
+  state.photos.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'caption-row';
+    row.innerHTML = `
+      <div class="cthumb"><img src="${p.url}"></div>
+      <input type="text" maxlength="40" placeholder="${i+1}枚目の文字(任意)" value="${escapeHtml(p.caption.text)}">
+      <input type="color" value="${p.caption.color}">
+    `;
+    const textInput = row.querySelector('input[type="text"]');
+    const colorInput = row.querySelector('input[type="color"]');
+    textInput.addEventListener('input', () => {
+      p.caption.text = textInput.value;
+      renderPreview();
+    });
+    colorInput.addEventListener('input', () => {
+      p.caption.color = colorInput.value;
+      renderPreview();
+    });
+    perPhotoCaptionList.appendChild(row);
+  });
+}
+
+let dragSrcIndex = null;
+
+function wireThumbDrag(){
+  const thumbs = thumbsEl.querySelectorAll('.thumb');
+  thumbs.forEach(el => {
+    el.addEventListener('dragstart', (e) => {
+      dragSrcIndex = parseInt(el.dataset.i, 10);
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(dragSrcIndex));
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      thumbs.forEach(t => t.classList.remove('drag-over'));
+    });
+    el.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      el.classList.add('drag-over');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.classList.remove('drag-over');
+      const targetIndex = parseInt(el.dataset.i, 10);
+      if(dragSrcIndex === null || dragSrcIndex === targetIndex) return;
+      const [moved] = state.photos.splice(dragSrcIndex, 1);
+      state.photos.splice(targetIndex, 0, moved);
+      dragSrcIndex = null;
+      renderThumbs();
+      renderPreview();
+    });
+  });
+}
+
+photoDrop.addEventListener('click', () => photoInput.click());
+photoInput.addEventListener('change', (e) => addPhotos(e.target.files));
+['dragenter','dragover'].forEach(evt => photoDrop.addEventListener(evt, (e) => { e.preventDefault(); photoDrop.classList.add('drag'); }));
+['dragleave','drop'].forEach(evt => photoDrop.addEventListener(evt, (e) => { e.preventDefault(); photoDrop.classList.remove('drag'); }));
+photoDrop.addEventListener('drop', (e) => addPhotos(e.dataTransfer.files));
+
+/* ---------------- audio handling ---------------- */
+const audioInput = document.getElementById('audioInput');
+const audioDrop = document.getElementById('audioDrop');
+const audioRow = document.getElementById('audioRow');
+const audioName = document.getElementById('audioName');
+const audioClear = document.getElementById('audioClear');
+
+function setAudio(file){
+  if(!file || !file.type.startsWith('audio/')) return;
+  if(state.audio) URL.revokeObjectURL(state.audio.url);
+  state.audio = { file, url: URL.createObjectURL(file) };
+  audioName.textContent = file.name;
+  audioRow.style.display = 'flex';
+  renderPreview();
+  updateExportButtons();
+}
+
+audioDrop.addEventListener('click', () => audioInput.click());
+audioInput.addEventListener('change', (e) => setAudio(e.target.files[0]));
+['dragenter','dragover'].forEach(evt => audioDrop.addEventListener(evt, (e) => { e.preventDefault(); audioDrop.classList.add('drag'); }));
+['dragleave','drop'].forEach(evt => audioDrop.addEventListener(evt, (e) => { e.preventDefault(); audioDrop.classList.remove('drag'); }));
+audioDrop.addEventListener('drop', (e) => setAudio(e.dataTransfer.files[0]));
+audioClear.addEventListener('click', () => {
+  if(state.audio) URL.revokeObjectURL(state.audio.url);
+  state.audio = null;
+  audioRow.style.display = 'none';
+  renderPreview();
+  updateExportButtons();
+});
+
+/* ---------------- settings ---------------- */
+const durRange = document.getElementById('durRange');
+const durValue = document.getElementById('durValue');
+durRange.addEventListener('input', () => {
+  state.duration = parseFloat(durRange.value);
+  durValue.textContent = state.duration + '秒';
+  restartPreviewTimer();
+});
+
+const ratioSelect = document.getElementById('ratioSelect');
+ratioSelect.addEventListener('change', () => {
+  state.ratio = ratioSelect.value;
+  renderPreview();
+});
+
+const titleInput = document.getElementById('titleInput');
+titleInput.addEventListener('input', () => {
+  state.title = titleInput.value.trim() || 'Stage Memories';
+  const t = document.getElementById('pvTitleText');
+  if(t) t.textContent = state.title;
+});
+
+/* ---------------- global caption ---------------- */
+const globalCaptionToggle = document.getElementById('globalCaptionToggle');
+const globalCaptionPanel = document.getElementById('globalCaptionPanel');
+const globalCaptionText = document.getElementById('globalCaptionText');
+const globalCaptionColor = document.getElementById('globalCaptionColor');
+
+globalCaptionToggle.addEventListener('change', () => {
+  state.globalCaption.enabled = globalCaptionToggle.checked;
+  globalCaptionPanel.style.display = state.globalCaption.enabled ? 'block' : 'none';
+  renderPreview();
+});
+globalCaptionText.addEventListener('input', () => {
+  state.globalCaption.text = globalCaptionText.value;
+  renderPreview();
+});
+globalCaptionColor.addEventListener('input', () => {
+  state.globalCaption.color = globalCaptionColor.value;
+  renderPreview();
+});
+
+/* ---------------- intro/outro solid screens ---------------- */
+const introOutroToggle = document.getElementById('introOutroToggle');
+const introOutroPanel = document.getElementById('introOutroPanel');
+const introTextInput = document.getElementById('introTextInput');
+const outroTextInput = document.getElementById('outroTextInput');
+const introBgColor = document.getElementById('introBgColor');
+const introTextColor = document.getElementById('introTextColor');
+
+introOutroToggle.addEventListener('change', () => {
+  state.introOutro.enabled = introOutroToggle.checked;
+  introOutroPanel.style.display = state.introOutro.enabled ? 'block' : 'none';
+  renderPreview();
+});
+introTextInput.addEventListener('input', () => { state.introOutro.introText = introTextInput.value; renderPreview(); });
+outroTextInput.addEventListener('input', () => { state.introOutro.outroText = outroTextInput.value; renderPreview(); });
+introBgColor.addEventListener('input', () => { state.introOutro.bgColor = introBgColor.value; renderPreview(); });
+introTextColor.addEventListener('input', () => { state.introOutro.textColor = introTextColor.value; renderPreview(); });
+
+/* ---------------- live preview ---------------- */
+const previewWrap = document.getElementById('previewWrap');
+let pvIdx = 0;
+let pvTimer = null;
+let pvPlaying = true;
+let pvMusicOn = false;
+let pvAudioEl = null;
+let currentPhotoCaptionTarget = null;
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function buildSlideList(photoItems){
+  const slides = [];
+  const io = state.introOutro;
+  if(io.enabled){
+    slides.push({ type:'solid', text: io.introText, bg: io.bgColor, color: io.textColor });
+  }
+  photoItems.forEach(item => slides.push({ type:'photo', src: item.src, caption: item.caption }));
+  if(io.enabled){
+    slides.push({ type:'solid', text: io.outroText, bg: io.bgColor, color: io.textColor });
+  }
+  return slides;
+}
+
+function ratioClass(){
+  if(state.ratio === '16-9') return 'ratio-16-9';
+  if(state.ratio === '4-3') return 'ratio-4-3';
+  if(state.ratio === '1-1') return 'ratio-1-1';
+  return '';
+}
+
+function makeDraggable(el, containerEl, onChange){
+  let dragging = false;
+  el.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    el.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  el.addEventListener('pointermove', (e) => {
+    if(!dragging) return;
+    const rect = containerEl.getBoundingClientRect();
+    let x = (e.clientX - rect.left) / rect.width;
+    let y = (e.clientY - rect.top) / rect.height;
+    x = Math.min(0.94, Math.max(0.06, x));
+    y = Math.min(0.94, Math.max(0.06, y));
+    el.style.left = (x * 100) + '%';
+    el.style.top = (y * 100) + '%';
+    onChange(x, y);
+  });
+  el.addEventListener('pointerup', (e) => { dragging = false; });
+  el.addEventListener('pointercancel', () => { dragging = false; });
+  el.addEventListener('click', (e) => e.stopPropagation());
+}
+
+function renderPreview(){
+  if(state.photos.length === 0){
+    previewWrap.innerHTML = '<div class="empty-note">写真をアップロードするとここにプレビューが表示されます</div>';
+    return;
+  }
+  const slides = buildSlideList(state.photos.map(p => ({ src: p.url, caption: p.caption })));
+  pvIdx = Math.min(pvIdx, slides.length - 1);
+
+  previewWrap.innerHTML = `
+    <div class="stage-preview ${ratioClass()}" id="pvStage">
+      <div id="pvFrame"></div>
+      <div class="pv-vignette"></div>
+      <div class="pv-chrome">
+        <div class="pv-title"><div class="mark"></div><span id="pvTitleText">${escapeHtml(state.title)}</span></div>
+        <div class="pv-bottom">
+          <div class="pv-counter"><b id="pvCur">01</b> / <span id="pvTotal"></span></div>
+          <div class="pv-dots" id="pvDots"></div>
+        </div>
+      </div>
+      <div class="pv-toggle" id="pvPlayPause"><svg viewBox="0 0 24 24"><path id="pvPPIcon" d="M6 4l15 8-15 8z"/></svg></div>
+      <div class="pv-toggle pv-music muted" id="pvMusicToggle"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM21 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z" stroke-width="1.8"/></svg></div>
+      <div class="pv-progress-track"><div class="pv-progress-fill" id="pvProgressFill"></div></div>
+      <div class="pv-controls"><div class="pv-hit" id="pvPrev"></div><div class="pv-hit" id="pvNext"></div></div>
+      <div class="pv-caption hidden" id="pvGlobalCaption"></div>
+      <div class="pv-caption hidden" id="pvGlobalCaption"></div>
+      <div class="pv-caption hidden" id="pvPhotoCaption"></div>
+    </div>
+  `;
+
+  const frame = document.getElementById('pvFrame');
+  const dots = document.getElementById('pvDots');
+  const pvStage = document.getElementById('pvStage');
+  document.getElementById('pvTotal').textContent = String(slides.length).padStart(2,'0');
+
+  slides.forEach((s, i) => {
+    const slide = document.createElement('div');
+    if(s.type === 'solid'){
+      slide.className = 'pv-slide solid';
+      slide.style.background = s.bg;
+      slide.innerHTML = `<div class="solid-text" style="color:${s.color}">${escapeHtml(s.text || '')}</div>`;
+    } else {
+      slide.className = 'pv-slide';
+      slide.innerHTML = `<img class="bg" src="${s.src}"><div class="fg-wrap"><img class="fg" src="${s.src}"></div>`;
+    }
+    frame.appendChild(slide);
+    const dot = document.createElement('div');
+    dot.className = 'pv-dot';
+    dot.addEventListener('click', () => { pvIdx = i; pvRender(); restartPreviewTimer(); });
+    dots.appendChild(dot);
+  });
+
+  const globalCapEl = document.getElementById('pvGlobalCaption');
+  if(state.globalCaption.enabled && state.globalCaption.text){
+    globalCapEl.textContent = state.globalCaption.text;
+    globalCapEl.style.color = state.globalCaption.color;
+    globalCapEl.style.left = (state.globalCaption.x * 100) + '%';
+    globalCapEl.style.top = (state.globalCaption.y * 100) + '%';
+    makeDraggable(globalCapEl, pvStage, (x, y) => { state.globalCaption.x = x; state.globalCaption.y = y; });
+  }
+
+  const photoCapEl = document.getElementById('pvPhotoCaption');
+  makeDraggable(photoCapEl, pvStage, (x, y) => {
+    if(currentPhotoCaptionTarget){ currentPhotoCaptionTarget.x = x; currentPhotoCaptionTarget.y = y; }
+  });
+
+  document.getElementById('pvPrev').addEventListener('click', () => { pvIdx = (pvIdx - 1 + slides.length) % slides.length; pvRender(); restartPreviewTimer(); });
+  document.getElementById('pvNext').addEventListener('click', () => { pvIdx = (pvIdx + 1) % slides.length; pvRender(); restartPreviewTimer(); });
+  document.getElementById('pvPlayPause').addEventListener('click', () => {
+    pvPlaying = !pvPlaying;
+    document.getElementById('pvPPIcon').setAttribute('d', pvPlaying ? 'M6 4l15 8-15 8z' : 'M6 4h4v16H6zM14 4h4v16h-4z');
+    if(pvPlaying) restartPreviewTimer(); else clearTimeout(pvTimer);
+  });
+
+  const musicToggle = document.getElementById('pvMusicToggle');
+  musicToggle.addEventListener('click', () => {
+    if(!state.audio) return;
+    if(!pvAudioEl){ pvAudioEl = new Audio(state.audio.url); pvAudioEl.loop = true; }
+    pvMusicOn = !pvMusicOn;
+    if(pvMusicOn){ pvAudioEl.play(); musicToggle.classList.remove('muted'); }
+    else { pvAudioEl.pause(); musicToggle.classList.add('muted'); }
+  });
+
+  window.__pvSlides = slides;
+  pvRender();
+  restartPreviewTimer();
+}
+
+function pvRender(){
+  document.querySelectorAll('.pv-slide').forEach((s,i) => s.classList.toggle('active', i===pvIdx));
+  document.querySelectorAll('.pv-dot').forEach((d,i) => d.classList.toggle('on', i===pvIdx));
+  const cur = document.getElementById('pvCur');
+  if(cur) cur.textContent = String(pvIdx+1).padStart(2,'0');
+
+  const slides = window.__pvSlides || [];
+  const curSlide = slides[pvIdx];
+
+  const globalCapEl = document.getElementById('pvGlobalCaption');
+  if(globalCapEl){
+    const show = state.globalCaption.enabled && state.globalCaption.text && curSlide && curSlide.type === 'photo';
+    globalCapEl.classList.toggle('hidden', !show);
+  }
+
+  const photoCapEl = document.getElementById('pvPhotoCaption');
+  if(photoCapEl){
+    if(curSlide && curSlide.type === 'photo' && curSlide.caption && curSlide.caption.text){
+      currentPhotoCaptionTarget = curSlide.caption;
+      photoCapEl.textContent = curSlide.caption.text;
+      photoCapEl.style.color = curSlide.caption.color;
+      photoCapEl.style.left = (curSlide.caption.x * 100) + '%';
+      photoCapEl.style.top = (curSlide.caption.y * 100) + '%';
+      photoCapEl.classList.remove('hidden');
+    } else {
+      currentPhotoCaptionTarget = null;
+      photoCapEl.classList.add('hidden');
+    }
+  }
+}
+
+function restartPreviewTimer(){
+  clearTimeout(pvTimer);
+  const fill = document.getElementById('pvProgressFill');
+  if(!fill) return;
+  fill.style.transition = 'none';
+  fill.style.width = '0%';
+  if(!pvPlaying) return;
+  requestAnimationFrame(() => {
+    fill.style.transition = `width ${state.duration*1000}ms linear`;
+    fill.style.width = '100%';
+  });
+  pvTimer = setTimeout(() => {
+    const total = document.querySelectorAll('.pv-slide').length || state.photos.length;
+    pvIdx = (pvIdx + 1) % total;
+    pvRender();
+    restartPreviewTimer();
+  }, state.duration * 1000);
+}
+
+function updateExportButtons(){
+  const ok = state.photos.length > 0;
+  document.getElementById('exportHtmlBtn').disabled = !ok;
+  document.getElementById('exportVideoBtn').disabled = !ok;
+}
+
+/* ---------------- export: standalone HTML ---------------- */
+function fileToDataURL(file){
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+document.getElementById('exportHtmlBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('exportHtmlBtn');
+  btn.disabled = true;
+  btn.textContent = '書き出し中…';
+
+  const imgData = await Promise.all(state.photos.map(p => fileToDataURL(p.file)));
+  const audioData = state.audio ? await fileToDataURL(state.audio.file) : null;
+  const captions = state.photos.map(p => p.caption);
+
+  const html = buildStandaloneHtml(imgData, captions, audioData, state.duration, state.ratio, state.title, state.globalCaption, state.font, state.fontScale);
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'stage_memories_slideshow.html';
+  a.click();
+
+  btn.disabled = false;
+  btn.textContent = 'HTMLで保存';
+});
+
+function buildStandaloneHtml(imgData, captions, audioData, duration, ratio, titleText, globalCaption, fontOpt, fontScale){
+  const safeTitle = String(titleText || 'Stage Memories').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const slidesData = buildSlideList(imgData.map((src, i) => ({ src, caption: captions[i] })));
+  const gc = globalCaption && globalCaption.enabled && globalCaption.text ? globalCaption : null;
+  const aspect = ratio === '16-9' ? '16/9' : (ratio === '4-3' ? '4/3' : (ratio === '1-1' ? '1/1' : '9/16'));
+  const font = fontOpt || FONT_OPTIONS[0];
+  const fontCss = `'${font.family}', ${font.fallback}`;
+  const fs = fontScale || 1;
+  return `<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8"><title>Stage Memories</title>
+<link href="https://fonts.googleapis.com/css2?family=${font.googleQuery}&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;background:#0c0814;font-family:${fontCss};}
+.stage{position:relative;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 30%,#201530 0%,#0c0814 70%);}
+.frame{position:relative;width:100%;height:100%;aspect-ratio:${aspect};max-height:100vh;overflow:hidden;margin:auto;}
+.slide{position:absolute;inset:0;opacity:0;transition:opacity 1s ease;}
+.slide.active{opacity:1;z-index:2;}
+.slide .bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(30px) brightness(0.5) saturate(1.1);transform:scale(1.15);}
+.slide .fgw{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;}
+.slide .fg{max-width:100%;max-height:100%;object-fit:contain;}
+.slide.solid{display:flex;align-items:center;justify-content:center;padding:10% 12%;text-align:center;}
+.slide.solid .stext{font-family:${fontCss};font-weight:700;line-height:1.6;white-space:pre-wrap;word-break:break-word;font-size:clamp(${16*fs}px,${4.5*fs}vw,${40*fs}px);}
+.cap{position:absolute;transform:translate(-50%,-50%);z-index:4;font-weight:700;text-align:center;white-space:pre-wrap;word-break:break-word;width:max-content;max-width:80%;text-shadow:0 2px 10px rgba(0,0,0,0.65);font-size:clamp(${13*fs}px,${4*fs}vw,${26*fs}px);}
+.gcap{position:absolute;transform:translate(-50%,-50%);z-index:4;font-weight:700;text-align:center;white-space:pre-wrap;word-break:break-word;width:max-content;max-width:80%;text-shadow:0 2px 10px rgba(0,0,0,0.65);font-size:clamp(${13*fs}px,${4*fs}vw,${26*fs}px);display:none;}
+.vig{position:absolute;inset:0;z-index:3;pointer-events:none;background:radial-gradient(ellipse at 50% 50%,transparent 45%,rgba(0,0,0,0.55) 100%);}
+.chrome{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;justify-content:space-between;padding:34px 40px;pointer-events:none;}
+.titlebar{display:flex;align-items:baseline;gap:14px;}
+.titlebar .mark{width:8px;height:8px;border-radius:50%;background:#ff3fa4;box-shadow:0 0 10px 2px rgba(255,63,164,0.7);}
+.titlebar span{font-family:${fontCss};font-weight:700;letter-spacing:0.28em;font-size:${13*fs}px;color:#ffc9e6;}
+.bottomrow{display:flex;align-items:flex-end;justify-content:space-between;}
+.counter{font-family:${fontCss};color:rgba(246,241,238,0.5);font-size:${14*fs}px;}
+.dots{display:flex;gap:8px;pointer-events:auto;}
+.dot{width:6px;height:6px;border-radius:50%;background:rgba(246,241,238,0.28);cursor:pointer;transition:.3s;}
+.dot.on{background:#ff3fa4;box-shadow:0 0 8px 1px rgba(255,63,164,0.6);transform:scale(1.35);}
+.controls{position:absolute;inset:0;z-index:6;display:flex;}
+.hit{flex:1;cursor:pointer;}
+.toggle{position:absolute;top:34px;width:34px;height:34px;border-radius:50%;border:1px solid rgba(246,241,238,0.35);background:rgba(12,8,20,0.35);display:flex;align-items:center;justify-content:center;cursor:pointer;pointer-events:auto;z-index:8;}
+.pp{right:40px;}
+.mt{right:84px;}
+.toggle svg{width:14px;height:14px;fill:#f6f1ee;}
+.mt svg{fill:none;stroke:#f6f1ee;}
+.mt.muted svg{stroke:rgba(246,241,238,0.4);}
+.ptrack{position:absolute;bottom:0;left:0;right:0;height:2px;z-index:7;background:rgba(246,241,238,0.08);}
+.pfill{height:100%;background:linear-gradient(90deg,#ff3fa4,#ffc9e6);width:0%;}
+</style></head>
+<body>
+<div class="stage">
+  <div class="frame" id="frame"></div>
+  <div class="vig"></div>
+  <div class="chrome">
+    <div class="titlebar"><div class="mark"></div><span>${safeTitle}</span></div>
+    <div class="bottomrow"><div class="counter"><b id="cur">01</b> / <span id="tot"></span></div><div class="dots" id="dots"></div></div>
+  </div>
+  <div class="toggle pp" id="pp"><svg id="ppi" viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></div>
+  <div class="toggle mt muted" id="mt"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM21 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z" stroke-width="1.8"/></svg></div>
+  <div class="ptrack"><div class="pfill" id="pfill"></div></div>
+  <div class="controls"><div class="hit" id="prev"></div><div class="hit" id="next"></div></div>
+  ${gc ? `<div class="gcap" id="gcap" style="left:${gc.x*100}%;top:${gc.y*100}%;color:${gc.color};">${gc.text.replace(/</g,'&lt;')}</div>` : ''}
+</div>
+${audioData ? `<audio id="bgm" loop><source src="${audioData}" type="audio/mpeg"></audio>` : ''}
+<script>
+const SLIDES = ${JSON.stringify(slidesData)};
+const DUR = ${duration} * 1000;
+let idx=0, playing=true, timer=null;
+const frame=document.getElementById('frame'), dots=document.getElementById('dots');
+document.getElementById('tot').textContent = String(SLIDES.length).padStart(2,'0');
+SLIDES.forEach((sl,i)=>{
+  const s=document.createElement('div'); s.className='slide';
+  if(sl.type==='solid'){
+    s.classList.add('solid');
+    s.style.background = sl.bg;
+    s.innerHTML = '<div class="stext" style="color:'+sl.color+'">'+(sl.text||'').replace(/</g,'&lt;')+'</div>';
+  } else {
+    s.innerHTML='<img class="bg" src="'+sl.src+'"><div class="fgw"><img class="fg" src="'+sl.src+'"></div>';
+    if(sl.caption && sl.caption.text){
+      const c=document.createElement('div'); c.className='cap';
+      c.style.left=(sl.caption.x*100)+'%'; c.style.top=(sl.caption.y*100)+'%'; c.style.color=sl.caption.color;
+      c.textContent = sl.caption.text;
+      s.appendChild(c);
+    }
+  }
+  frame.appendChild(s);
+  const d=document.createElement('div'); d.className='dot';
+  d.addEventListener('click',()=>{idx=i;render();restart();});
+  dots.appendChild(d);
+});
+const slides=frame.querySelectorAll('.slide'), dotEls=dots.querySelectorAll('.dot');
+const gcapEl = document.getElementById('gcap');
+function render(){
+  slides.forEach((s,i)=>s.classList.toggle('active',i===idx));
+  dotEls.forEach((d,i)=>d.classList.toggle('on',i===idx));
+  document.getElementById('cur').textContent=String(idx+1).padStart(2,'0');
+  if(gcapEl){ gcapEl.style.display = (SLIDES[idx] && SLIDES[idx].type==='photo') ? 'block' : 'none'; }
+}
+function next(){ idx=(idx+1)%SLIDES.length; render(); restart(); }
+function prev(){ idx=(idx-1+SLIDES.length)%SLIDES.length; render(); restart(); }
+function restart(){
+  clearTimeout(timer);
+  const fill=document.getElementById('pfill');
+  fill.style.transition='none'; fill.style.width='0%';
+  if(!playing) return;
+  requestAnimationFrame(()=>{ fill.style.transition='width '+DUR+'ms linear'; fill.style.width='100%'; });
+  timer=setTimeout(next, DUR);
+}
+document.getElementById('prev').addEventListener('click',prev);
+document.getElementById('next').addEventListener('click',next);
+document.getElementById('pp').addEventListener('click',()=>{
+  playing=!playing;
+  document.getElementById('ppi').setAttribute('d', playing?'M6 4l15 8-15 8z':'M6 4h4v16H6zM14 4h4v16h-4z');
+  if(playing) restart(); else clearTimeout(timer);
+});
+${audioData ? `
+const bgm=document.getElementById('bgm'); bgm.volume=0.75;
+let musicOn=false;
+document.getElementById('mt').addEventListener('click',function(){
+  musicOn=!musicOn;
+  if(musicOn){ bgm.play(); this.classList.remove('muted'); } else { bgm.pause(); this.classList.add('muted'); }
+});` : ''}
+render(); restart();
+<\/script>
+</body></html>`;
+}
+
+/* ---------------- export: video (canvas + MediaRecorder, fully in-browser) ---------------- */
+function loadImage(url){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function wrapCanvasText(ctx, text, maxWidth){
+  const lines = [];
+  const paragraphs = String(text || '').split('\n');
+  paragraphs.forEach(p => {
+    const words = p.split(' ');
+    let line = '';
+    words.forEach(w => {
+      const test = line ? line + ' ' + w : w;
+      if(ctx.measureText(test).width > maxWidth && line){
+        lines.push(line);
+        line = w;
+      } else {
+        line = test;
+      }
+    });
+    lines.push(line);
+  });
+  return lines;
+}
+
+function canvasFontFamily(){
+  const f = state.font || FONT_OPTIONS[0];
+  return `"${f.family}", ${f.fallback}`;
+}
+
+function drawSolid(ctx, W, H, text, bg, color){
+  ctx.fillStyle = bg || '#0c0814';
+  ctx.fillRect(0, 0, W, H);
+  if(!text) return;
+  ctx.fillStyle = color || '#f6f1ee';
+  const fontSize = Math.round(H * 0.045 * (state.fontScale || 1));
+  ctx.font = '700 ' + fontSize + 'px ' + canvasFontFamily();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const maxWidth = W * 0.76;
+  const lines = wrapCanvasText(ctx, text, maxWidth);
+  const lineHeight = fontSize * 1.6;
+  const startY = H/2 - (lines.length - 1) * lineHeight / 2;
+  lines.forEach((line, i) => ctx.fillText(line, W/2, startY + i*lineHeight));
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawCaption(ctx, W, H, text, color, x, y){
+  if(!text) return;
+  ctx.save();
+  ctx.fillStyle = color || '#ffffff';
+  const fontSize = Math.round(H * 0.028 * (state.fontScale || 1));
+  ctx.font = '700 ' + fontSize + 'px ' + canvasFontFamily();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.65)';
+  ctx.shadowBlur = 10;
+  const maxWidth = W * 0.8;
+  const lines = wrapCanvasText(ctx, text, maxWidth);
+  const lineHeight = fontSize * 1.35;
+  const cx = W * x, cy = H * y;
+  const startY = cy - (lines.length - 1) * lineHeight / 2;
+  lines.forEach((line, i) => ctx.fillText(line, cx, startY + i*lineHeight));
+  ctx.restore();
+}
+
+function drawComposite(ctx, img, W, H){
+  ctx.clearRect(0,0,W,H);
+  const bscale = Math.max(W/img.width, H/img.height);
+  const bw = img.width*bscale, bh = img.height*bscale;
+  ctx.save();
+  ctx.filter = 'blur(30px) brightness(0.5) saturate(1.1)';
+  ctx.drawImage(img, (W-bw)/2, (H-bh)/2, bw, bh);
+  ctx.restore();
+
+  const cscale = Math.min(W/img.width, H/img.height);
+  const cw = img.width*cscale, ch = img.height*cscale;
+  ctx.drawImage(img, (W-cw)/2, (H-ch)/2, cw, ch);
+
+  const grad = ctx.createRadialGradient(W/2,H/2, H*0.22, W/2,H/2, H*0.7);
+  grad.addColorStop(0,'rgba(0,0,0,0)');
+  grad.addColorStop(1,'rgba(0,0,0,0.55)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+}
+
+function drawChrome(ctx, W, H, idx, total, progress, titleText){
+  ctx.fillStyle = '#ff3fa4';
+  ctx.beginPath(); ctx.arc(W*0.045+3, H*0.032, 3.5, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#ffc9e6';
+  ctx.font = '700 ' + Math.round(H*0.014 * (state.fontScale || 1)) + 'px ' + canvasFontFamily();
+  ctx.fillText((titleText || 'Stage Memories').toUpperCase(), W*0.045+16, H*0.032+5);
+
+  ctx.fillStyle = 'rgba(246,241,238,0.7)';
+  ctx.font = '600 ' + Math.round(H*0.016 * (state.fontScale || 1)) + 'px ' + canvasFontFamily();
+  ctx.fillText(String(idx+1).padStart(2,'0') + ' / ' + String(total).padStart(2,'0'), W*0.045, H*0.965);
+
+  const barY = H - Math.max(2, H*0.0018);
+  ctx.fillStyle = 'rgba(246,241,238,0.12)';
+  ctx.fillRect(0, barY, W, Math.max(2, H*0.0018));
+  ctx.fillStyle = '#ff3fa4';
+  ctx.fillRect(0, barY, W*progress, Math.max(2, H*0.0018));
+}
+
+/* ---------------- lazy-load ffmpeg.wasm (only when video export is used) ---------------- */
+let ffmpegInstance = null;
+function loadScript(src){
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('failed to load ' + src));
+    document.head.appendChild(s);
+  });
+}
+async function getFFmpeg(onLog){
+  if(ffmpegInstance) return ffmpegInstance;
+  if(!window.FFmpegWASM){
+    await loadScript('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js');
+  }
+  if(!window.FFmpegUtil){
+    await loadScript('https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js');
+  }
+  const { FFmpeg } = window.FFmpegWASM;
+  const { toBlobURL } = window.FFmpegUtil;
+  const ffmpeg = new FFmpeg();
+  if(onLog) ffmpeg.on('log', ({ message }) => onLog(message));
+  const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+  await ffmpeg.load({
+    coreURL: await toBlobURL(base + '/ffmpeg-core.js', 'text/javascript'),
+    wasmURL: await toBlobURL(base + '/ffmpeg-core.wasm', 'application/wasm'),
+  });
+  ffmpegInstance = ffmpeg;
+  return ffmpeg;
+}
+
+document.getElementById('exportVideoBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('exportVideoBtn');
+  const statusEl = document.getElementById('exportStatus');
+  const statusText = document.getElementById('exportStatusText');
+  const barFill = document.getElementById('exportBarFill');
+  const downloadArea = document.getElementById('downloadArea');
+
+  btn.disabled = true;
+  statusEl.classList.add('show');
+  downloadArea.innerHTML = '';
+  statusText.textContent = '準備中…';
+  barFill.style.width = '0%';
+
+  let webmBlob = null;
+
+  try{
+    await document.fonts.load('700 32px ' + canvasFontFamily());
+    await document.fonts.load('600 32px ' + canvasFontFamily());
+    await document.fonts.ready;
+
+    let W = 1080, H = 1920;
+    if(state.ratio === '16-9'){ W = 1920; H = 1080; }
+    if(state.ratio === '4-3'){ W = 1440; H = 1080; }
+    if(state.ratio === '1-1'){ W = 1080; H = 1080; }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    const imgEls = await Promise.all(state.photos.map(p => loadImage(p.url)));
+    const videoSlides = buildSlideList(imgEls.map((img, i) => ({ src: img, caption: state.photos[i].caption })));
+    const perSlide = state.duration;
+    const totalDuration = videoSlides.length * perSlide;
+
+    let audioTracks = [];
+    let audioEl = null;
+    let audioCtx = null;
+    let gainNode = null;
+
+    if(state.audio){
+      audioEl = new Audio(state.audio.url);
+      audioEl.loop = true;
+      audioEl.crossOrigin = 'anonymous';
+      await new Promise((resolve) => {
+        if(audioEl.readyState >= 3) resolve();
+        else audioEl.addEventListener('canplaythrough', resolve, { once:true });
+        audioEl.load();
+      });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaElementSource(audioEl);
+      gainNode = audioCtx.createGain();
+      const dest = audioCtx.createMediaStreamDestination();
+      src.connect(gainNode);
+      gainNode.connect(dest);
+      audioTracks = dest.stream.getAudioTracks();
+    }
+
+    const videoStream = canvas.captureStream(30);
+    const combined = new MediaStream([...videoStream.getVideoTracks(), ...audioTracks]);
+
+    // record to WebM — the one format browsers reliably support end-to-end (video+audio) in real time
+    let mimeType = 'video/webm;codecs=vp9,opus';
+    if(!(window.MediaRecorder && MediaRecorder.isTypeSupported(mimeType))) mimeType = 'video/webm;codecs=vp8,opus';
+    if(!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+
+    const recorder = new MediaRecorder(combined, { mimeType, videoBitsPerSecond: 6000000 });
+    const chunks = [];
+    recorder.ondataavailable = (e) => { if(e.data.size > 0) chunks.push(e.data); };
+    const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
+
+    statusText.textContent = '録画中… 0 / ' + totalDuration.toFixed(1) + '秒';
+    recorder.start();
+    if(audioEl) audioEl.play();
+
+    const startTime = performance.now();
+    let fadeApplied = false;
+
+    await new Promise((resolve) => {
+      function frame(){
+        const elapsed = (performance.now() - startTime) / 1000;
+        if(elapsed >= totalDuration){ resolve(); return; }
+
+        const idx = Math.min(Math.floor(elapsed / perSlide), videoSlides.length - 1);
+        const slide = videoSlides[idx];
+        if(slide.type === 'solid'){
+          drawSolid(ctx, W, H, slide.text, slide.bg, slide.color);
+        } else {
+          drawComposite(ctx, slide.src, W, H);
+          if(slide.caption && slide.caption.text){
+            drawCaption(ctx, W, H, slide.caption.text, slide.caption.color, slide.caption.x, slide.caption.y);
+          }
+          if(state.globalCaption.enabled && state.globalCaption.text){
+            drawCaption(ctx, W, H, state.globalCaption.text, state.globalCaption.color, state.globalCaption.x, state.globalCaption.y);
+          }
+        }
+        drawChrome(ctx, W, H, idx, videoSlides.length, elapsed / totalDuration, state.title);
+
+        if(gainNode && !fadeApplied && elapsed >= totalDuration - 1.5){
+          fadeApplied = true;
+          const now = audioCtx.currentTime;
+          gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+          gainNode.gain.linearRampToValueAtTime(0.0001, now + 1.4);
+        }
+
+        statusText.textContent = '録画中… ' + elapsed.toFixed(1) + ' / ' + totalDuration.toFixed(1) + '秒';
+        barFill.style.width = (elapsed / totalDuration * 45) + '%';
+
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    });
+
+    recorder.stop();
+    if(audioEl) audioEl.pause();
+    await stopped;
+
+    webmBlob = new Blob(chunks, { type: mimeType });
+
+    // ---- transcode to a genuinely X-compatible MP4 (H.264 video + AAC audio) via ffmpeg.wasm ----
+    statusText.textContent = 'MP4に変換中(初回は準備に時間がかかります)…';
+    barFill.style.width = '48%';
+
+    const ffmpeg = await getFFmpeg((msg) => { /* console.log(msg) */ });
+    ffmpeg.on('progress', ({ progress }) => {
+      const pct = 48 + Math.min(1, Math.max(0, progress)) * 50;
+      barFill.style.width = pct + '%';
+      statusText.textContent = 'MP4に変換中… ' + Math.round(Math.min(1,Math.max(0,progress)) * 100) + '%';
+    });
+
+    const inBytes = new Uint8Array(await webmBlob.arrayBuffer());
+    await ffmpeg.writeFile('input.webm', inBytes);
+    await ffmpeg.exec([
+      '-i', 'input.webm',
+      '-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '192k',
+      '-movflags', '+faststart',
+      'output.mp4'
+    ]);
+    const outData = await ffmpeg.readFile('output.mp4');
+    const mp4Blob = new Blob([outData.buffer], { type: 'video/mp4' });
+
+    const url = URL.createObjectURL(mp4Blob);
+    statusText.textContent = '完了!';
+    barFill.style.width = '100%';
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'stage_memories_reel.mp4';
+    a.className = 'download-link';
+    a.textContent = '動画をダウンロード (MP4)';
+    downloadArea.innerHTML = '';
+    downloadArea.appendChild(a);
+
+  } catch(err){
+    console.error(err);
+    const isWorkerOriginError = /Worker/.test(err.message) && /origin 'null'/.test(err.message);
+    if(webmBlob){
+      // MP4 conversion failed after recording succeeded — offer the WebM so nothing is lost
+      const url = URL.createObjectURL(webmBlob);
+      if(isWorkerOriginError){
+        statusText.innerHTML = 'MP4への変換に失敗しました。原因: このファイルを直接開いている(file://)と、ブラウザの制限でMP4変換に必要な仕組みが動きません。<br>回避方法: ①簡易サーバー経由で開く(例: このフォルダで <code>python -m http.server</code> を実行し、http://localhost:8000/ からアクセス)、②またはClaudeのチャット内プレビューからこのページを開いて試す。<br>ひとまずWebM形式で出力しておきました(投稿先によっては別途変換が必要な場合があります)。';
+      } else {
+        statusText.textContent = 'MP4への変換に失敗したため、WebM形式で出力しました(投稿先によっては別途変換が必要な場合があります): ' + err.message;
+      }
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'stage_memories_reel.webm';
+      a.className = 'download-link';
+      a.textContent = '動画をダウンロード (WebM)';
+      downloadArea.innerHTML = '';
+      downloadArea.appendChild(a);
+    } else {
+      statusText.textContent = 'エラーが発生しました: ' + err.message;
+    }
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((err) => console.error('SW registration failed:', err));
+  });
+}
+</script>
+</body>
+</html>

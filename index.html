@@ -285,7 +285,7 @@
 <div class="wrap">
 
   <header class="app-head">
-    <div class="eyebrow"><div class="mark"></div><span>Stage Memories Maker</span><span style="opacity:.45; letter-spacing:normal; font-size:11px;">build 3</span></div>
+    <div class="eyebrow"><div class="mark"></div><span>Stage Memories Maker</span><span style="opacity:.45; letter-spacing:normal; font-size:11px;">build 4</span></div>
     <h1>写真とBGMから、ステージ想い出のスライドショーを作る</h1>
     <p>写真をアップロードして音楽を選ぶだけ。プレビューを確認したら、そのままブラウザ内でHTMLまたは動画(MP4 / WebM)として書き出せます。サーバーには何もアップロードされません。</p>
   </header>
@@ -425,7 +425,7 @@
       <span id="exportStatusText">録画準備中…</span>
       <div class="export-bar-track"><div class="export-bar-fill" id="exportBarFill"></div></div>
     </div>
-    <div class="footnote">書き出し中はこのタブを開いたままにしてください。録画のあと、ブラウザ内でMP4(H.264+AAC)に変換するため、初回は変換エンジンの読み込みで少し時間がかかります(通信環境が必要です)。SNS投稿にそのまま使える形式で出力されます。</div>
+    <div class="footnote">書き出し中はこのタブを開いたままにしてください。ブラウザ標準の機能でMP4(H.264+AAC)を直接作成するので、SNS投稿にそのまま使えます。実時間の再生を待つ必要がないため、写真が多くても比較的短時間で終わります。<br>お使いのブラウザがこの方式に対応していない場合のみ、自動的に録画方式に切り替わり、WebM形式で出力されます。</div>
     <div id="downloadArea"></div>
   </section>
 
@@ -1165,8 +1165,7 @@ function drawChrome(ctx, W, H, idx, total, progress, titleText){
   ctx.fillRect(0, barY, W*progress, Math.max(2, H*0.0018));
 }
 
-/* ---------------- lazy-load ffmpeg.wasm (only when video export is used) ---------------- */
-let ffmpegInstance = null;
+/* ---------------- small helper for loading an external script on demand ---------------- */
 function loadScript(src){
   return new Promise((resolve, reject) => {
     const s = document.createElement('script');
@@ -1176,32 +1175,190 @@ function loadScript(src){
     document.head.appendChild(s);
   });
 }
-async function getFFmpeg(onLog){
-  if(ffmpegInstance) return ffmpegInstance;
 
-  const FFMPEG_BASE = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd';
-  const CORE_BASE   = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-  const UTIL_URL    = 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js';
+/* ---------------- WebCodecs MP4 export (no ffmpeg, no big download) ---------------- */
+async function pickVideoConfig(W, H){
+  const candidates = ['avc1.640034','avc1.4d0034','avc1.640028','avc1.42003e','avc1.42001f'];
+  const bitrate = Math.min(12000000, Math.max(4000000, Math.round(W * H * 0.12)));
+  for(const codec of candidates){
+    const cfg = { codec, width: W, height: H, bitrate, framerate: 30 };
+    try{
+      const res = await VideoEncoder.isConfigSupported(cfg);
+      if(res && res.supported) return cfg;
+    }catch(e){ /* try next */ }
+  }
+  throw new Error('この端末では対応するH.264設定が見つかりませんでした');
+}
 
-  if(!window.FFmpegWASM){ await loadScript(FFMPEG_BASE + '/ffmpeg.js'); }
-  if(!window.FFmpegUtil){ await loadScript(UTIL_URL); }
+async function buildAudioPlanes(totalDuration){
+  if(!state.audio) return null;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ac = new AC();
+  try{
+    const decoded = await ac.decodeAudioData(await state.audio.file.arrayBuffer());
+    const sampleRate = decoded.sampleRate;
+    const channels = Math.min(2, decoded.numberOfChannels);
+    const total = Math.ceil(totalDuration * sampleRate);
+    const planes = [];
+    for(let c = 0; c < channels; c++){
+      const src = decoded.getChannelData(Math.min(c, decoded.numberOfChannels - 1));
+      const out = new Float32Array(total);
+      if(src.length > 0){
+        for(let i = 0; i < total; i++) out[i] = src[i % src.length];
+      }
+      planes.push(out);
+    }
+    // fade the last 1.5s out so the track never ends abruptly
+    const fade = Math.min(Math.floor(1.5 * sampleRate), total);
+    for(let i = 0; i < fade; i++){
+      const g = 1 - i / fade;
+      const idx = total - fade + i;
+      for(let c = 0; c < channels; c++) planes[c][idx] *= g;
+    }
+    return { planes, sampleRate, channels, total };
+  } finally {
+    ac.close();
+  }
+}
 
-  const { FFmpeg } = window.FFmpegWASM;
-  const { toBlobURL } = window.FFmpegUtil;
-  const ffmpeg = new FFmpeg();
-  if(onLog) ffmpeg.on('log', ({ message }) => onLog(message));
+async function exportViaWebCodecs(opts){
+  const { W, H, videoSlides, perSlide, totalDuration, onProgress } = opts;
 
-  // A browser refuses to start a Worker from another domain's script, even over https.
-  // Passing classWorkerURL as a blob: URL makes it same-origin, so no files need to be
-  // hosted alongside this page.
-  await ffmpeg.load({
-    coreURL:        await toBlobURL(CORE_BASE + '/ffmpeg-core.js', 'text/javascript'),
-    wasmURL:        await toBlobURL(CORE_BASE + '/ffmpeg-core.wasm', 'application/wasm'),
-    classWorkerURL: await toBlobURL(FFMPEG_BASE + '/814.ffmpeg.js', 'text/javascript'),
+  if(typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined'){
+    throw new Error('このブラウザはWebCodecsに対応していません');
+  }
+  if(!window.Mp4Muxer){
+    await loadScript('https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.5/build/mp4-muxer.min.js');
+  }
+  if(!window.Mp4Muxer) throw new Error('MP4の組み立て用ライブラリを読み込めませんでした');
+  const { Muxer, ArrayBufferTarget } = window.Mp4Muxer;
+
+  const videoConfig = await pickVideoConfig(W, H);
+
+  let audio = null;
+  const hasAudioEncoder = (typeof AudioEncoder !== 'undefined' && typeof AudioData !== 'undefined');
+  if(state.audio && hasAudioEncoder){
+    try{ audio = await buildAudioPlanes(totalDuration); }
+    catch(e){ audio = null; }
+  }
+
+  const muxerOpts = {
+    target: new ArrayBufferTarget(),
+    video: { codec: 'avc', width: W, height: H },
+    fastStart: 'in-memory'
+  };
+  if(audio){
+    muxerOpts.audio = { codec: 'aac', sampleRate: audio.sampleRate, numberOfChannels: audio.channels };
+  }
+  const muxer = new Muxer(muxerOpts);
+
+  let encodeError = null;
+  const videoEncoder = new VideoEncoder({
+    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    error: (e) => { encodeError = e; }
   });
+  videoEncoder.configure(videoConfig);
 
-  ffmpegInstance = ffmpeg;
-  return ffmpeg;
+  let audioEncoder = null;
+  if(audio){
+    audioEncoder = new AudioEncoder({
+      output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+      error: (e) => { encodeError = e; }
+    });
+    audioEncoder.configure({
+      codec: 'mp4a.40.2',
+      sampleRate: audio.sampleRate,
+      numberOfChannels: audio.channels,
+      bitrate: 192000
+    });
+  }
+
+  // ---- video: render every frame offline (faster than real time) ----
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const FPS = 30;
+  const totalFrames = Math.round(totalDuration * FPS);
+  const frameDur = 1e6 / FPS;
+
+  for(let i = 0; i < totalFrames; i++){
+    if(encodeError) throw encodeError;
+
+    const elapsed = i / FPS;
+    const idx = Math.min(Math.floor(elapsed / perSlide), videoSlides.length - 1);
+    const slide = videoSlides[idx];
+
+    if(slide.type === 'solid'){
+      drawSolid(ctx, W, H, slide.text, slide.bg, slide.color);
+    } else {
+      drawComposite(ctx, slide.src, W, H);
+      if(slide.caption && slide.caption.text){
+        drawCaption(ctx, W, H, slide.caption.text, slide.caption.color, slide.caption.x, slide.caption.y);
+      }
+      if(state.globalCaption.enabled && state.globalCaption.text){
+        drawCaption(ctx, W, H, state.globalCaption.text, state.globalCaption.color, state.globalCaption.x, state.globalCaption.y);
+      }
+    }
+    drawChrome(ctx, W, H, idx, videoSlides.length, elapsed / totalDuration, state.title);
+
+    const frame = new VideoFrame(canvas, { timestamp: Math.round(i * frameDur), duration: Math.round(frameDur) });
+    videoEncoder.encode(frame, { keyFrame: i % (FPS * 2) === 0 });
+    frame.close();
+
+    // let the encoder drain so memory stays bounded and the UI stays responsive
+    if(videoEncoder.encodeQueueSize > 12){
+      await new Promise(r => setTimeout(r, 0));
+      while(videoEncoder.encodeQueueSize > 6){
+        await new Promise(r => setTimeout(r, 4));
+      }
+    }
+    if(i % 10 === 0){
+      onProgress(i / totalFrames * 0.85);
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+
+  // ---- audio ----
+  if(audio && audioEncoder){
+    const CHUNK = 4096;
+    const { planes, sampleRate, channels, total } = audio;
+    for(let start = 0; start < total; start += CHUNK){
+      if(encodeError) throw encodeError;
+      const n = Math.min(CHUNK, total - start);
+      const interleavedPlanar = new Float32Array(n * channels);
+      for(let c = 0; c < channels; c++){
+        interleavedPlanar.set(planes[c].subarray(start, start + n), c * n);
+      }
+      const data = new AudioData({
+        format: 'f32-planar',
+        sampleRate,
+        numberOfFrames: n,
+        numberOfChannels: channels,
+        timestamp: Math.round(start / sampleRate * 1e6),
+        data: interleavedPlanar
+      });
+      audioEncoder.encode(data);
+      data.close();
+
+      if(audioEncoder.encodeQueueSize > 12){
+        while(audioEncoder.encodeQueueSize > 6){
+          await new Promise(r => setTimeout(r, 4));
+        }
+      }
+    }
+  }
+
+  onProgress(0.9);
+  await videoEncoder.flush();
+  if(audioEncoder) await audioEncoder.flush();
+  if(encodeError) throw encodeError;
+
+  muxer.finalize();
+  onProgress(1);
+
+  const { buffer } = muxer.target;
+  return new Blob([buffer], { type: 'video/mp4' });
 }
 
 document.getElementById('exportVideoBtn').addEventListener('click', async () => {
@@ -1217,7 +1374,16 @@ document.getElementById('exportVideoBtn').addEventListener('click', async () => 
   statusText.textContent = '準備中…';
   barFill.style.width = '0%';
 
-  let webmBlob = null;
+  function offerDownload(blob, ext, label){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'stage_memories_reel.' + ext;
+    a.className = 'download-link';
+    a.textContent = label;
+    downloadArea.innerHTML = '';
+    downloadArea.appendChild(a);
+  }
 
   try{
     await document.fonts.load('700 32px ' + canvasFontFamily());
@@ -1229,149 +1395,128 @@ document.getElementById('exportVideoBtn').addEventListener('click', async () => 
     if(state.ratio === '4-3'){ W = 1440; H = 1080; }
     if(state.ratio === '1-1'){ W = 1080; H = 1080; }
 
-    const canvas = document.createElement('canvas');
-    canvas.width = W; canvas.height = H;
-    const ctx = canvas.getContext('2d');
-
     const imgEls = await Promise.all(state.photos.map(p => loadImage(p.url)));
     const videoSlides = buildSlideList(imgEls.map((img, i) => ({ src: img, caption: state.photos[i].caption })));
     const perSlide = state.duration;
     const totalDuration = videoSlides.length * perSlide;
 
-    let audioTracks = [];
-    let audioEl = null;
-    let audioCtx = null;
-    let gainNode = null;
-
-    if(state.audio){
-      audioEl = new Audio(state.audio.url);
-      audioEl.loop = true;
-      audioEl.crossOrigin = 'anonymous';
-      await new Promise((resolve) => {
-        if(audioEl.readyState >= 3) resolve();
-        else audioEl.addEventListener('canplaythrough', resolve, { once:true });
-        audioEl.load();
-      });
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const src = audioCtx.createMediaElementSource(audioEl);
-      gainNode = audioCtx.createGain();
-      const dest = audioCtx.createMediaStreamDestination();
-      src.connect(gainNode);
-      gainNode.connect(dest);
-      audioTracks = dest.stream.getAudioTracks();
-    }
-
-    const videoStream = canvas.captureStream(30);
-    const combined = new MediaStream([...videoStream.getVideoTracks(), ...audioTracks]);
-
-    // record to WebM — the one format browsers reliably support end-to-end (video+audio) in real time
-    let mimeType = 'video/webm;codecs=vp9,opus';
-    if(!(window.MediaRecorder && MediaRecorder.isTypeSupported(mimeType))) mimeType = 'video/webm;codecs=vp8,opus';
-    if(!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
-
-    const recorder = new MediaRecorder(combined, { mimeType, videoBitsPerSecond: 6000000 });
-    const chunks = [];
-    recorder.ondataavailable = (e) => { if(e.data.size > 0) chunks.push(e.data); };
-    const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
-
-    statusText.textContent = '録画中… 0 / ' + totalDuration.toFixed(1) + '秒';
-    recorder.start();
-    if(audioEl) audioEl.play();
-
-    const startTime = performance.now();
-    let fadeApplied = false;
-
-    await new Promise((resolve) => {
-      function frame(){
-        const elapsed = (performance.now() - startTime) / 1000;
-        if(elapsed >= totalDuration){ resolve(); return; }
-
-        const idx = Math.min(Math.floor(elapsed / perSlide), videoSlides.length - 1);
-        const slide = videoSlides[idx];
-        if(slide.type === 'solid'){
-          drawSolid(ctx, W, H, slide.text, slide.bg, slide.color);
-        } else {
-          drawComposite(ctx, slide.src, W, H);
-          if(slide.caption && slide.caption.text){
-            drawCaption(ctx, W, H, slide.caption.text, slide.caption.color, slide.caption.x, slide.caption.y);
-          }
-          if(state.globalCaption.enabled && state.globalCaption.text){
-            drawCaption(ctx, W, H, state.globalCaption.text, state.globalCaption.color, state.globalCaption.x, state.globalCaption.y);
-          }
-        }
-        drawChrome(ctx, W, H, idx, videoSlides.length, elapsed / totalDuration, state.title);
-
-        if(gainNode && !fadeApplied && elapsed >= totalDuration - 1.5){
-          fadeApplied = true;
-          const now = audioCtx.currentTime;
-          gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-          gainNode.gain.linearRampToValueAtTime(0.0001, now + 1.4);
-        }
-
-        statusText.textContent = '録画中… ' + elapsed.toFixed(1) + ' / ' + totalDuration.toFixed(1) + '秒';
-        barFill.style.width = (elapsed / totalDuration * 45) + '%';
-
-        requestAnimationFrame(frame);
+    statusText.textContent = 'MP4を作成中…';
+    const mp4Blob = await exportViaWebCodecs({
+      W, H, videoSlides, perSlide, totalDuration,
+      onProgress: (p) => {
+        const pct = Math.round(Math.min(1, Math.max(0, p)) * 100);
+        barFill.style.width = pct + '%';
+        statusText.textContent = 'MP4を作成中… ' + pct + '%';
       }
-      requestAnimationFrame(frame);
     });
 
-    recorder.stop();
-    if(audioEl) audioEl.pause();
-    await stopped;
-
-    webmBlob = new Blob(chunks, { type: mimeType });
-
-    // ---- transcode to a genuinely X-compatible MP4 (H.264 video + AAC audio) via ffmpeg.wasm ----
-    statusText.textContent = 'MP4に変換中(初回は準備に時間がかかります)…';
-    barFill.style.width = '48%';
-
-    const ffmpeg = await getFFmpeg((msg) => { /* console.log(msg) */ });
-    ffmpeg.on('progress', ({ progress }) => {
-      const pct = 48 + Math.min(1, Math.max(0, progress)) * 50;
-      barFill.style.width = pct + '%';
-      statusText.textContent = 'MP4に変換中… ' + Math.round(Math.min(1,Math.max(0,progress)) * 100) + '%';
-    });
-
-    const inBytes = new Uint8Array(await webmBlob.arrayBuffer());
-    await ffmpeg.writeFile('input.webm', inBytes);
-    await ffmpeg.exec([
-      '-i', 'input.webm',
-      '-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac', '-b:a', '192k',
-      '-movflags', '+faststart',
-      'output.mp4'
-    ]);
-    const outData = await ffmpeg.readFile('output.mp4');
-    const mp4Blob = new Blob([outData.buffer], { type: 'video/mp4' });
-
-    const url = URL.createObjectURL(mp4Blob);
-    statusText.textContent = '完了!';
+    statusText.textContent = '完了! そのままSNSに投稿できるMP4(H.264 + AAC)です。';
     barFill.style.width = '100%';
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'stage_memories_reel.mp4';
-    a.className = 'download-link';
-    a.textContent = '動画をダウンロード (MP4)';
-    downloadArea.innerHTML = '';
-    downloadArea.appendChild(a);
+    offerDownload(mp4Blob, 'mp4', '動画をダウンロード (MP4)');
 
   } catch(err){
     console.error(err);
-    if(webmBlob){
-      // MP4 conversion failed after recording succeeded — offer the WebM so nothing is lost
-      const url = URL.createObjectURL(webmBlob);
-      statusText.textContent = 'MP4への変換に失敗したため、WebM形式で出力しました(投稿先によっては別途変換が必要な場合があります): ' + err.message;
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'stage_memories_reel.webm';
-      a.className = 'download-link';
-      a.textContent = '動画をダウンロード (WebM)';
-      downloadArea.innerHTML = '';
-      downloadArea.appendChild(a);
-    } else {
-      statusText.textContent = 'エラーが発生しました: ' + err.message;
+    // WebCodecs path failed — fall back to real-time recording, which produces WebM
+    try{
+      statusText.textContent = 'MP4での書き出しに対応していないため、録画方式に切り替えています…';
+      barFill.style.width = '0%';
+
+      let W = 1080, H = 1920;
+      if(state.ratio === '16-9'){ W = 1920; H = 1080; }
+      if(state.ratio === '4-3'){ W = 1440; H = 1080; }
+      if(state.ratio === '1-1'){ W = 1080; H = 1080; }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+
+      const imgEls = await Promise.all(state.photos.map(p => loadImage(p.url)));
+      const videoSlides = buildSlideList(imgEls.map((img, i) => ({ src: img, caption: state.photos[i].caption })));
+      const perSlide = state.duration;
+      const totalDuration = videoSlides.length * perSlide;
+
+      let audioTracks = [], audioEl = null, audioCtx = null, gainNode = null;
+      if(state.audio){
+        audioEl = new Audio(state.audio.url);
+        audioEl.loop = true;
+        await new Promise((resolve) => {
+          if(audioEl.readyState >= 3) resolve();
+          else audioEl.addEventListener('canplaythrough', resolve, { once:true });
+          audioEl.load();
+        });
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const src = audioCtx.createMediaElementSource(audioEl);
+        gainNode = audioCtx.createGain();
+        const dest = audioCtx.createMediaStreamDestination();
+        src.connect(gainNode);
+        gainNode.connect(dest);
+        audioTracks = dest.stream.getAudioTracks();
+      }
+
+      const videoStream = canvas.captureStream(30);
+      const combined = new MediaStream([...videoStream.getVideoTracks(), ...audioTracks]);
+
+      let mimeType = 'video/webm;codecs=vp9,opus';
+      if(!(window.MediaRecorder && MediaRecorder.isTypeSupported(mimeType))) mimeType = 'video/webm;codecs=vp8,opus';
+      if(!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+
+      const recorder = new MediaRecorder(combined, { mimeType, videoBitsPerSecond: 6000000 });
+      const chunks = [];
+      recorder.ondataavailable = (e) => { if(e.data.size > 0) chunks.push(e.data); };
+      const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
+
+      recorder.start();
+      if(audioEl) audioEl.play();
+
+      const startTime = performance.now();
+      let fadeApplied = false;
+
+      await new Promise((resolve) => {
+        function frame(){
+          const elapsed = (performance.now() - startTime) / 1000;
+          if(elapsed >= totalDuration){ resolve(); return; }
+
+          const idx = Math.min(Math.floor(elapsed / perSlide), videoSlides.length - 1);
+          const slide = videoSlides[idx];
+          if(slide.type === 'solid'){
+            drawSolid(ctx, W, H, slide.text, slide.bg, slide.color);
+          } else {
+            drawComposite(ctx, slide.src, W, H);
+            if(slide.caption && slide.caption.text){
+              drawCaption(ctx, W, H, slide.caption.text, slide.caption.color, slide.caption.x, slide.caption.y);
+            }
+            if(state.globalCaption.enabled && state.globalCaption.text){
+              drawCaption(ctx, W, H, state.globalCaption.text, state.globalCaption.color, state.globalCaption.x, state.globalCaption.y);
+            }
+          }
+          drawChrome(ctx, W, H, idx, videoSlides.length, elapsed / totalDuration, state.title);
+
+          if(gainNode && !fadeApplied && elapsed >= totalDuration - 1.5){
+            fadeApplied = true;
+            const now = audioCtx.currentTime;
+            gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+            gainNode.gain.linearRampToValueAtTime(0.0001, now + 1.4);
+          }
+
+          statusText.textContent = '録画中… ' + elapsed.toFixed(1) + ' / ' + totalDuration.toFixed(1) + '秒';
+          barFill.style.width = (elapsed / totalDuration * 100) + '%';
+          requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+      });
+
+      recorder.stop();
+      if(audioEl) audioEl.pause();
+      await stopped;
+
+      const webmBlob = new Blob(chunks, { type: mimeType });
+      statusText.textContent = 'WebM形式で出力しました(このブラウザではMP4を直接作成できませんでした)。投稿先によっては変換が必要な場合があります。';
+      barFill.style.width = '100%';
+      offerDownload(webmBlob, 'webm', '動画をダウンロード (WebM)');
+
+    } catch(err2){
+      console.error(err2);
+      statusText.textContent = 'エラーが発生しました: ' + ((err2 && err2.message) || (err && err.message) || '原因不明');
     }
   } finally {
     btn.disabled = false;

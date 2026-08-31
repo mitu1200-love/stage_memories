@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stage-memories-maker-v1';
+const CACHE_NAME = 'stage-memories-maker-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -25,26 +25,43 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  const req = event.request;
+  const url = new URL(req.url);
 
-  // Only handle same-origin app-shell requests with cache-first.
-  // Everything else (Google Fonts, unpkg/ffmpeg.wasm, blob: URLs, uploaded media)
-  // is left to the network untouched, so it never interferes with the
-  // in-browser MP4 conversion or font loading.
-  if(url.origin !== self.location.origin){
+  // Leave anything cross-origin alone (Google Fonts, ffmpeg.wasm on unpkg, etc.)
+  // so it never interferes with font loading or the in-browser MP4 conversion.
+  if(url.origin !== self.location.origin) return;
+
+  const isHTML = req.mode === 'navigate' ||
+                 url.pathname.endsWith('/') ||
+                 url.pathname.endsWith('.html');
+
+  if(isHTML){
+    // Network-first for the page itself: a redeploy is picked up immediately,
+    // and the cache is only a fallback for offline use.
+    event.respondWith(
+      fetch(req).then((response) => {
+        if(response && response.status === 200){
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+        }
+        return response;
+      }).catch(() => caches.match(req).then((c) => c || caches.match('./index.html')))
+    );
     return;
   }
 
+  // Cache-first is fine for static assets like icons.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
+    caches.match(req).then((cached) => {
       if(cached) return cached;
-      return fetch(event.request).then((response) => {
+      return fetch(req).then((response) => {
         if(response && response.status === 200){
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
         }
         return response;
-      }).catch(() => cached);
+      });
     })
   );
 });
